@@ -1,0 +1,291 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chaos & Candy — Setup guide</title><style>body{margin:0;background:#f4f2f8;color:#242030;font:17px/1.65 system-ui,sans-serif}main{max-width:950px;margin:40px auto;padding:40px;background:white;border-radius:20px;box-shadow:0 8px 40px #31244815}h1{font-size:38px;line-height:1.15;color:#4b2270}h2{margin-top:55px;border-top:2px solid #eee4f7;padding-top:25px;color:#622e85;scroll-margin-top:20px}a{color:#66268e}code{background:#f1eaf6;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{white-space:pre-wrap;padding:16px;background:#f1eaf6;border-radius:10px}table{border-collapse:collapse;width:100%;font-size:15px;margin:24px 0}th,td{border:1px solid #ded4e6;padding:12px;text-align:left;overflow-wrap:anywhere}th{background:#f3ecf8}li{margin-bottom:10px}.intro{background:#1e132b;color:#f8efff;padding:24px;border-radius:12px}.intro a{color:#80e8d8}nav{display:flex;flex-wrap:wrap;gap:12px;font-size:14px;margin:24px 0}@media(max-width:650px){main{margin:0;padding:22px;border-radius:0}h1{font-size:29px}table{font-size:13px}th,td{padding:7px}}@media print{main{margin:0;box-shadow:none;padding:10px}h2{break-before:auto}tr{break-inside:avoid}}</style></head><body><main><div class="intro"><strong>Start here — no VS Code required.</strong><br>Keep your current website. Follow the steps below to deploy this separate 3D world.<br><a href="SECRET-GENERATOR.html">Open the local secret generator</a></div><h1 id="chaos-candy-3d-world-mvp">Chaos &amp; Candy — 3D World MVP</h1>
+<p>A browser-based club for your Discord community, with a small persistent neighborhood.</p>
+<p><strong>You do not need VS Code or a terminal for deployment.</strong> You can also open <code>START-HERE.html</code> directly in your browser. Use GitHub, Vercel, Turso, Discord Developer Portal, and Railway in your browser. Follow these sections in order.</p>
+<h2 id="what-you-are-getting">What you are getting</h2>
+<ul>
+<li>A stylized 3D club with a dance floor, DJ booth, lounge seating, and eight surrounding plots.</li>
+<li>Discord login: server membership required; server nickname, or Discord display name/username, shown above the avatar. Ownership is tied to the permanent Discord user ID, so a name change does not lose land.</li>
+<li>Shared multiplayer movement, club text chat, online member list, five avatar colors, dance/wave/sit actions, and touch movement controls.</li>
+<li>Eight <strong>free test plots</strong>, one per member. Seven building pieces: wall, floor tile, chair, table, lamp, tree, booth. Rotate in 90-degree steps and remove pieces. One item per square, up to 60 objects per plot; no vertical stacking yet.</li>
+<li>Saved plot names, ownership, objects, avatar colors, and world bans in Turso.</li>
+<li>Owner moderation: your configured Discord ID can remove/ban an online member from the world.</li>
+</ul>
+<p>This is a small playable foundation, not a complete Second Life/Minecraft replacement. Purchases, paid land, credit balances, seller stores, building bundles, uploads, crafting, games, proximity voice, Discord chat mirroring, and general moderator role assignment are <strong>not included</strong>. Use your existing Discord voice channels separately. The DJ booth is decorative; it does not stream music. Avatars are simple geometric characters. Buildings are decorative and do not yet block walking. There is one shared world with a 24-player cap; that is a configured limit, not a measured device/network performance guarantee.</p>
+<h2 id="what-stays-and-what-is-new">What stays and what is new</h2>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Existing website</td>
+<td>Keep it running unchanged while testing this world.</td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td>Create a separate repository named <code>chaos-candy-world</code>.</td>
+</tr>
+<tr>
+<td>Vercel</td>
+<td>Create a separate project from that repository.</td>
+</tr>
+<tr>
+<td>Turso</td>
+<td>You can reuse your existing <code>chaos-candy</code> database. No deletion or reset required.</td>
+</tr>
+<tr>
+<td>Discord</td>
+<td>Create a Developer Portal application for login. Your Discord server stays as it is.</td>
+</tr>
+<tr>
+<td>Railway</td>
+<td>Add one always-running Node service for the shared world. It may require a paid plan/usage charges; check its current pricing before enabling service.</td>
+</tr>
+<tr>
+<td>Resend</td>
+<td>Not used by this new world. Keep it for the original site.</td>
+</tr>
+</tbody>
+</table>
+<p>Vercel serves the website; Railway keeps the live connections and movement running; Turso saves ownership and building data. <strong>Vercel alone will not run this multiplayer server.</strong></p>
+<h2 id="1-extract-and-upload-to-github">1. Extract and upload to GitHub</h2>
+<ol>
+<li>Download <code>chaos-candy-world-mvp.zip</code> and choose <strong>Extract All</strong> in Windows.</li>
+<li>Open the extracted <code>chaos-candy-world</code> folder. You should see <code>app</code>, <code>server</code>, <code>scripts</code>, <code>package.json</code>, and this guide.</li>
+<li>On <a href="https://github.com/new">GitHub</a>, create a new repository called <code>chaos-candy-world</code>. Private is fine. Do not replace your old repository.</li>
+<li>Open the repository and choose <strong>uploading an existing file</strong> (or <strong>Add file → Upload files</strong>).</li>
+<li>Drag the <strong>contents inside</strong> the extracted folder into GitHub. Do not upload the ZIP or add an extra outer folder.</li>
+<li>Commit the uploaded files to <code>main</code>.</li>
+<li>Verify <code>package.json</code> is visible at the repository's top level and <code>server/package.json</code> is inside <code>server</code>.</li>
+</ol>
+<p>The example environment files contain placeholders only. Never put real tokens, passwords, or client secrets in GitHub. There are no node_modules or generated build folders in this ZIP; hosting installs dependencies automatically.</p>
+<h2 id="2-create-the-vercel-website">2. Create the Vercel website</h2>
+<ol>
+<li>Open <a href="https://vercel.com/new">Vercel</a> and import the new <code>chaos-candy-world</code> GitHub repository.</li>
+<li>Framework preset: <strong>Next.js</strong>. Root directory: <strong>./</strong> (the repository root).</li>
+<li>Keep the normal Next.js build/output settings. The package requests Node.js 24.</li>
+<li>Deploy without environment variables for this first pass.</li>
+<li>Copy the project's stable production URL, such as <code>https://your-project.vercel.app</code>. Use the project domain, not a temporary commit/preview URL.</li>
+</ol>
+<p>The 3D page can load now, but login will show a setup message. That is expected until steps 3–6 are finished. Keep the URL handy; below it is called <strong>YOUR_VERCEL_URL</strong>. Do not include a trailing slash.</p>
+<h2 id="3-collect-the-turso-connection-details">3. Collect the Turso connection details</h2>
+<ol>
+<li>Open <a href="https://app.turso.tech">Turso</a> and select your existing <strong>chaos-candy</strong> database.</li>
+<li>Open its <strong>Overview</strong> or connection-details area, rather than Edit Data.</li>
+<li>Copy the database URL beginning <code>libsql://</code>. This becomes <code>TURSO_DATABASE_URL</code>.</li>
+<li>Use its database token/connection controls to generate an authentication token with read/write access. This becomes <code>TURSO_AUTH_TOKEN</code>. Dashboard labels can vary; use the database's connection/token section.</li>
+<li>Save both privately for Railway. Do not send the token in screenshots.</li>
+</ol>
+<p>If you prefer isolation, you can instead create a new Turso database named <code>chaos-candy-world</code> and use that database's URL and token. That is optional.</p>
+<p><strong>There is no SQL statement you must run for initial setup.</strong> The world server creates these new tables automatically when it starts successfully:</p>
+<ul>
+<li><code>world_users</code></li>
+<li><code>world_sessions</code></li>
+<li><code>world_plots</code></li>
+<li><code>world_objects</code></li>
+</ul>
+<p>It also creates eight available plots. It does not modify your old <code>accounts</code>, <code>profiles</code>, <code>rooms</code>, or other chat tables. Existing email accounts do not migrate or merge into Discord accounts; the world creates a separate Discord identity on first login.</p>
+<h2 id="4-set-up-discord-login">4. Set up Discord login</h2>
+<ol>
+<li>Open <a href="https://discord.com/developers/applications">Discord Developer Portal</a>.</li>
+<li>Choose <strong>New Application</strong>, name it <strong>Chaos &amp; Candy World</strong>, and create it.</li>
+<li>Open <strong>OAuth2</strong>. Copy the <strong>Client ID</strong>. Reveal/reset and copy the <strong>Client Secret</strong>. These are two different values. A bot token is not the client secret.</li>
+<li>Under <strong>Redirects</strong>, add this exact URL, replacing the example domain with your Vercel production domain:</li>
+</ol>
+<p><code>https://your-project.vercel.app/api/auth/callback</code></p>
+<ol>
+<li>Save the redirect. Do not add a slash after <code>callback</code>. You do not need to create an OAuth invite URL manually; the website handles it.</li>
+<li>In the normal Discord app, open <strong>User Settings → Advanced → Developer Mode</strong> and turn it on.</li>
+<li>Right-click your Discord server icon and choose <strong>Copy Server ID</strong>. Save this as <code>DISCORD_GUILD_ID</code>.</li>
+<li>Right-click your own Discord profile/user and choose <strong>Copy User ID</strong>. Save this as <code>DISCORD_OWNER_ID</code>. This must be your numeric user ID, not your name or server ID.</li>
+</ol>
+<p>No Discord bot is required. Login requests <code>identify</code> and <code>guilds.members.read</code>, allowing the site to identify the user and check membership in your server. It does not read Discord messages or automatically join voice. Membership/nickname are checked at login; sessions last 24 hours. Removing someone from Discord does not instantly kick an already signed-in world session; use the world's owner moderation to remove them immediately.</p>
+<h2 id="5-create-the-railway-multiplayer-server">5. Create the Railway multiplayer server</h2>
+<ol>
+<li>Open <a href="https://railway.com">Railway</a>, create a project, and select <strong>Deploy from GitHub repo</strong>.</li>
+<li>Select the new <code>chaos-candy-world</code> repository. Allow the GitHub integration access to this repository if needed.</li>
+<li>Open the created service's <strong>Settings</strong>. Set its <strong>Root Directory</strong> to <code>/server</code>.</li>
+<li>Set <strong>Start Command</strong> to <code>npm start</code>. A custom build command is not needed; Railway installs the Node dependencies. An initial failed deployment before you finish configuration is expected.</li>
+<li>Keep <strong>one replica</strong>. Disable sleeping/serverless mode if that option is enabled. Multiple replicas would create separate worlds in this MVP.</li>
+<li>Open the service's <strong>Variables</strong> and add all values below. Enter values without quotation marks.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>APP_URL</code></td>
+<td>YOUR_VERCEL_URL, starting <code>https://</code>, no trailing slash</td>
+</tr>
+<tr>
+<td><code>API_PROXY_SECRET</code></td>
+<td>A new random secret, at least 32 characters; use the included <code>SECRET-GENERATOR.html</code> locally, or a password manager</td>
+</tr>
+<tr>
+<td><code>TURSO_DATABASE_URL</code></td>
+<td>Your <code>libsql://...</code> database URL</td>
+</tr>
+<tr>
+<td><code>TURSO_AUTH_TOKEN</code></td>
+<td>The database read/write token</td>
+</tr>
+<tr>
+<td><code>DISCORD_CLIENT_ID</code></td>
+<td>Discord OAuth Client ID</td>
+</tr>
+<tr>
+<td><code>DISCORD_CLIENT_SECRET</code></td>
+<td>Discord OAuth Client Secret</td>
+</tr>
+<tr>
+<td><code>DISCORD_GUILD_ID</code></td>
+<td>Your Discord server's numeric ID</td>
+</tr>
+<tr>
+<td><code>DISCORD_OWNER_ID</code></td>
+<td>Your own numeric Discord user ID</td>
+</tr>
+<tr>
+<td><code>PORT</code></td>
+<td><code>8080</code></td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>Apply/deploy the changes. Wait for the service log to say <strong>World server ready.</strong></li>
+<li>Under <strong>Settings → Networking → Public Networking</strong>, choose <strong>Generate Domain</strong>. If asked for target port, use <strong>8080</strong>.</li>
+<li>Copy the generated domain, such as <code>your-world.up.railway.app</code>.</li>
+<li>Open <code>https://your-world.up.railway.app/health</code> in your browser, using your actual generated domain. You should see <code>{"ok":true,"players":0}</code> (the number changes when people join).</li>
+</ol>
+<p>If startup fails, check the Turso URL/token and that Railway's root is <code>/server</code>. Do not reset the database. Keep the same <code>API_PROXY_SECRET</code> for the next step. It is a server-to-server secret, not a Discord key or the old site's SESSION_SECRET.</p>
+<h2 id="6-connect-vercel-to-railway">6. Connect Vercel to Railway</h2>
+<ol>
+<li>Return to the new Vercel project → <strong>Settings → Environment Variables</strong>.</li>
+<li>Add these three variables to <strong>Production</strong>:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Example — replace with your own values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WORLD_SERVER_URL</code></td>
+<td><code>https://your-world.up.railway.app</code></td>
+</tr>
+<tr>
+<td><code>NEXT_PUBLIC_WORLD_WS_URL</code></td>
+<td><code>wss://your-world.up.railway.app</code></td>
+</tr>
+<tr>
+<td><code>API_PROXY_SECRET</code></td>
+<td>Exactly the same secret entered in Railway</td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>Do not append <code>/live</code> to the WebSocket value; the app adds it. Do not put Turso or Discord secrets in any <code>NEXT_PUBLIC_</code> variable.</li>
+<li>Open <strong>Deployments</strong>, open the menu for the latest production deployment, and choose <strong>Redeploy</strong>. Environment changes require a new deployment. The public WebSocket URL is embedded at build time.</li>
+<li>Visit the stable Vercel production URL. Choose <strong>Enter with Discord</strong>, authorize the application, and return to the world.</li>
+</ol>
+<p>Do not test with a Vercel preview URL: this configuration intentionally accepts only the production origin. If you later change domain, update Railway <code>APP_URL</code>, Discord's exact redirect URI, and redeploy the affected services.</p>
+<h2 id="7-test-with-a-friend">7. Test with a friend</h2>
+<ol>
+<li>Log in as yourself. You should see your Discord server nickname and a colored avatar.</li>
+<li>On desktop, use WASD/arrows to walk. Drag the scene to turn the camera; scroll to zoom. On a phone, use the lower-left movement pad and drag the scene to look. The side panel can collapse to leave more room.</li>
+<li>Ask one member of your Discord server to open the same production URL. Use a different Discord account, not two tabs of the same account: the newer tab replaces the older session.</li>
+<li>Confirm both avatars move and club chat messages appear to both users.</li>
+<li>Open <strong>Build / My space</strong>, choose an available plot, <strong>View plot</strong>, then <strong>Claim this test plot</strong>.</li>
+<li>Choose an item, tap/click an empty square inside the plot, choose a rotation, and press <strong>Place</strong>. Tap an existing item and choose <strong>Remove selected object</strong> to delete it. To reposition an object, remove and place it again.</li>
+<li>Name your plot and save. Refresh the website, sign in again if needed, and check the plot and objects remain.</li>
+<li>Your friend should be able to claim a different plot but not edit yours.</li>
+<li>In <strong>People</strong>, your owner profile has a <strong>Remove</strong> action beside other online users. This is a world ban, not just a temporary kick. Use it only when intended. It does not ban the person from Discord.</li>
+<li>Try the site on a real phone. Touch controls and responsive layouts are included; device performance still needs your community's testing.</li>
+</ol>
+<p>A server restart disconnects everyone; press <strong>Reconnect</strong> to return. Plot data stays saved. Chat history is intentionally temporary (last 60 messages, cleared on server restart). Positions and emotes reset on reconnect. There is no offline chat delivery.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>What you see</th>
+<th>Check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>World server setup is incomplete</td>
+<td>Add the three Vercel variables, then redeploy.</td>
+</tr>
+<tr>
+<td>World server unavailable</td>
+<td>Open Railway <code>/health</code>; check deployment logs and Turso credentials.</td>
+</tr>
+<tr>
+<td>Access denied from API</td>
+<td><code>API_PROXY_SECRET</code> must be identical on Vercel and Railway.</td>
+</tr>
+<tr>
+<td>Invalid OAuth redirect</td>
+<td>Discord redirect must exactly equal Railway <code>APP_URL</code> plus <code>/api/auth/callback</code>.</td>
+</tr>
+<tr>
+<td>Join the Discord server</td>
+<td>Confirm the user is in your server and <code>DISCORD_GUILD_ID</code> is the correct server ID.</td>
+</tr>
+<tr>
+<td>Login returns a general error</td>
+<td>Check Client ID and Client Secret (not bot token), redirect URI, and Railway outbound connectivity.</td>
+</tr>
+<tr>
+<td>Login works but world will not connect</td>
+<td><code>NEXT_PUBLIC_WORLD_WS_URL</code> must start <code>wss://</code>; Railway domain must target port 8080; <code>APP_URL</code> must match the address bar origin. Redeploy Vercel after changing public variables.</td>
+</tr>
+<tr>
+<td>No owner moderation button</td>
+<td><code>DISCORD_OWNER_ID</code> must be your user ID; sign out/in after configuration changes.</td>
+</tr>
+<tr>
+<td>No free plots</td>
+<td>All eight are claimed. This small world intentionally does not sell or automatically add more plots.</td>
+</tr>
+<tr>
+<td>All avatars vanish after deployment</td>
+<td>The single live server restarted. Reconnect. Saved buildings remain in Turso.</td>
+</tr>
+<tr>
+<td>Blank scene / graphics error</td>
+<td>Update the browser and enable graphics acceleration. WebGL support is required.</td>
+</tr>
+</tbody>
+</table>
+<p>To verify database setup from Turso <strong>Edit Data</strong>, run this read-only statement:</p>
+<pre><code class="language-sql">SELECT name FROM sqlite_master
+WHERE type = 'table' AND name GLOB 'world_*'
+ORDER BY name;
+</code></pre>
+<p>To undo a world ban, first look up the correct Discord ID in <code>world_users</code>. Then run this single statement, replacing the placeholder inside the quotes with that exact ID:</p>
+<pre><code class="language-sql">UPDATE world_users SET banned = 0 WHERE id = 'PASTE_DISCORD_USER_ID';
+</code></pre>
+<p>The member must sign in again. Do not delete your old tables or run the old site's setup SQL for this new world.</p>
+<h2 id="what-has-been-verified">What has been verified</h2>
+<p>The production frontend build and backend automated tests pass. The preview browser displayed the page layout but reported WebGL unavailable, so the 3D render and real-phone behavior could not be visually verified here. Tests cover session/proxy access, OAuth state rejection, movement limits, simultaneous plot claims, owner-only building/removal, persistence after restart, chat delivery, and owner-only moderation. These tests use isolated local database data; they do not use your accounts or touch your existing database. Live Discord authorization and your Vercel/Railway/Turso connection require the setup above. This is not a payment-ready release or a load-tested commercial launch.</p>
+<h2 id="developer-notes-optional">Developer notes (optional)</h2>
+<p>Node.js 24. Frontend: Next.js/React/Babylon.js. Live backend: Express + WebSocket with movement validated on the server. Database: libSQL/Turso. There is no Colyseus dependency.</p>
+<p>Local development: install root and server dependencies separately (<code>npm ci</code> and <code>npm ci --prefix server</code>). Copy example environment files to local files, configure Discord's localhost callback, and run <code>node --env-file=.env index.mjs</code> from <code>server</code>, plus <code>npm run dev</code> from the repository root. The server can use a local <code>file:</code> database URL for testing. <code>npm test --prefix server</code> runs integration checks. <code>npm run build</code> builds the website. No demo authentication bypass is shipped.</p>
+<p>Keep one backend instance. Identity and ownership checks are enforced by the backend, not only hidden UI. Never calculate paid balances in browser code. Before charging for land, add payment-provider webhooks, an idempotent transaction ledger, refund handling, backups, audit trails, expanded moderation and a production security review.</p>
+<h2 id="official-setup-references">Official setup references</h2>
+<ul>
+<li><a href="https://docs.discord.com/developers/topics/oauth2">Discord OAuth2</a></li>
+<li><a href="https://vercel.com/docs/environment-variables/managing-environment-variables">Vercel environment variables and redeployment</a></li>
+<li><a href="https://docs.railway.com/deployments/monorepo">Railway monorepo root directories</a></li>
+<li><a href="https://docs.railway.com/networking/public-networking">Railway public networking</a></li>
+</ul></main></body></html>
