@@ -1,0 +1,1 @@
+{"name":"chaos-candy-world-server","version":"0.1.0","private":true,"type":"module","engines":{"node":"24.x"},"scripts":{"start":"node index.mjs","test":"node --test test.mjs"},"dependencies":{"express":"^5.1.0","ws":"^8.18.0","@libsql/client":"^0.15.0"}}
