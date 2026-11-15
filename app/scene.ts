@@ -19,8 +19,8 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
   scene.clearColor=new Color4(.035,.023,.065,1);
   scene.fogMode=Scene.FOGMODE_EXP2;scene.fogDensity=.004;scene.fogColor=new Color3(.035,.023,.065);
   const camera=new ArcRotateCamera("camera",Math.PI/2,1.04,21,new Vector3(0,0,0),scene);
-  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.4;camera.lowerRadiusLimit=8;camera.upperRadiusLimit=100;
-  camera.attachControl(canvas,true);camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");camera.panningSensibility=0;camera.wheelPrecision=30;
+  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.4;camera.lowerRadiusLimit=8;camera.upperRadiusLimit=160;
+  camera.attachControl(canvas,false);camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");camera.panningSensibility=60;camera.wheelPrecision=10;camera.pinchPrecision=25;
   const light=new HemisphericLight("sky",new Vector3(.3,1,.4),scene);light.intensity=.85;
   const materials=new Map<string,StandardMaterial>();
   function material(color:string,glow=false){
@@ -59,6 +59,17 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     box("sofa base",x,.65,-9,2.8,.7,4,"#70375f");box("sofa back",x+(x<0?-.9:.9),1.3,-9,.7,1.2,4,"#a6588d");
     box("table",x,.7,-4.8,2,.2,1.6,"#43a89d");box("table leg",x,.3,-4.8,.3,.7,.3,"#333044");
   }
+  // A compact fishing destination between the club and residential plots.
+  box("pond bank",30,.02,34,24,.18,18,"#375151");
+  box("candy pond",30,.15,34,22,.15,16,"#207b91",undefined,true);
+  box("fishing pier",30,.32,26,5,.4,10,"#87618a");
+  for(const x of [27.8,32.2])box("pier post",x,.8,27,.18,1.6,.18,"#edb7df");
+  box("Marina stall",30,.65,20,3,1.3,1,"#654377");
+  box("Marina canopy",30,2.7,20,4,.25,2.3,"#65d8c7");
+  box("Marina body",30,1.5,19.4,.65,1,.4,"#e689bc");
+  const npcHead=MeshBuilder.CreateSphere("Marina",{diameter:.6,segments:10},scene);npcHead.position.set(30,2.25,19.4);npcHead.material=material("#ecc6a3");npcHead.isPickable=false;
+  const pierSign=label("CANDY POND · FISHING",8,1.2,"#8ae4d5");pierSign.mesh.position.set(30,3.8,29);pierSign.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
+  const npcSign=label("MARINA · 10 CB / FISH",7,1.1,"#f4bfdc");npcSign.mesh.position.set(30,3.5,19);npcSign.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
   for(const z of [-48,48])box("neighborhood road",0,.02,z,180,.1,6,"#322642");
   const plots=new Map<number,{mesh:Mesh;label:ReturnType<typeof label>}>();
   for(let id=1;id<=8;id++){
@@ -69,7 +80,7 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     const title=label("Plot "+id+" · available",7,1.2,"#8ae4d5");title.mesh.position.set(x,1,z+(z>0?-17:17));title.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
     plots.set(id,{mesh,label:title});
   }
-  const avatarMap=new Map<string,{root:TransformNode;body:Mesh;name:ReturnType<typeof label>;target:Player}>();
+  const avatarMap=new Map<string,{root:TransformNode;body:Mesh;rod:Mesh;name:ReturnType<typeof label>;target:Player}>();
   function playerMesh(player:Player){
     const root=new TransformNode(player.id,scene);
     const body=box("body",0,1.1,0,.7,.9,.42,player.color,root);
@@ -77,8 +88,9 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     box("hair",0,2.08,-.04,.55,.2,.5,"#211831",root);
     box("leg",- .2,.35,0,.24,.7,.3,"#322642",root);box("leg",.2,.35,0,.24,.7,.3,"#322642",root);
     box("arm",-.48,1.1,0,.2,.85,.25,player.color,root);box("arm",.48,1.1,0,.2,.85,.25,player.color,root);
+    const rod=box("fishing rod",.5,1.8,.7,.06,.06,2.2,"#e6c080",root);rod.rotation.x=-.4;rod.setEnabled(false);
     const name=label(player.name,3,.65);name.mesh.position.y=2.65;name.mesh.parent=root;name.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
-    root.position.set(player.x,0,player.z);return {root,body,name,target:player};
+    root.position.set(player.x,0,player.z);return {root,body,rod,name,target:player};
   }
   const objects=new Map<string,TransformNode>();
   function build(item:Item){
@@ -112,18 +124,18 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
   };
   // A short click selects a building cell; dragging rotates the view.
   let down={x:0,y:0};
-  const pointerDown=(event:PointerEvent)=>{down={x:event.clientX,y:event.clientY};};
-  const pointerUp=(event:PointerEvent)=>{if(Math.hypot(event.clientX-down.x,event.clientY-down.y)<8)pick(event);};
+  const pointerDown=(event:PointerEvent)=>{if(event.button===2||event.ctrlKey||event.pointerType==="touch")follow=false;down={x:event.clientX,y:event.clientY};};
+  const pointerUp=(event:PointerEvent)=>{if(event.button===0&&Math.hypot(event.clientX-down.x,event.clientY-down.y)<8)pick(event);};
   canvas.addEventListener("pointerdown",pointerDown);canvas.addEventListener("pointerup",pointerUp);
   let disposed=false;
   const render=()=>{
     const now=performance.now()/1000;
     for(const avatar of avatarMap.values()){
-      const p=avatar.target;
+      const p=avatar.target;avatar.rod.setEnabled(p.emote==="fishing");
       avatar.root.position.x+=(p.x-avatar.root.position.x)*.3;avatar.root.position.z+=(p.z-avatar.root.position.z)*.3;
-      avatar.root.rotation.y=p.rotation+(p.emote==="dance"?Math.sin(now*3)*.45:0);
-      avatar.root.position.y=p.emote==="dance"?Math.abs(Math.sin(now*5))*.18:p.emote==="sit"?-.45:0;
-      avatar.root.rotation.z=p.emote==="wave"?Math.sin(now*5)*.12:0;
+      avatar.root.rotation.y=p.rotation+(p.emote==="neon_spin"?now*5:p.emote==="dance"?Math.sin(now*3)*.45:0);
+      avatar.root.position.y=p.emote==="neon_spin"?Math.abs(Math.sin(now*4))*.45:p.emote==="dance"?Math.abs(Math.sin(now*5))*.18:p.emote==="sit"?-.45:0;
+      avatar.root.rotation.z=p.emote==="neon_spin"?Math.sin(now*3)*.25:p.emote==="wave"?Math.sin(now*5)*.12:0;
       if(p.id===self&&follow)camera.target=Vector3.Lerp(camera.target,new Vector3(avatar.root.position.x,1,avatar.root.position.z),.12);
     }
     scene.render();
@@ -140,8 +152,9 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     },
     select(plot:number,x:number,z:number){const p=plotPosition(plot);highlight.position.set(p.x+x+.5,.3,p.z+z+.5);highlight.setEnabled(true);},
     mode(enabled:boolean){buildMode=enabled;grid.setEnabled(enabled);if(!enabled)highlight.setEnabled(false);},
-    plot(id:number){follow=false;const p=plotPosition(id);grid.position.set(p.x,0,p.z);camera.target.set(p.x,0,p.z);camera.radius=52;camera.beta=.45;},
-    follow(){follow=true;camera.radius=21;camera.beta=1.04;},
+    plot(id:number){camera.detachControl();camera.attachControl(false,true,2);follow=false;const p=plotPosition(id);grid.position.set(p.x,0,p.z);camera.target.set(p.x,0,p.z);camera.radius=52;camera.beta=.45;},
+    explore(){follow=false;camera.detachControl();camera.attachControl(false,true,0);},
+    follow(){camera.detachControl();camera.attachControl(false,true,2);follow=true;camera.radius=21;camera.beta=1.04;},
     direction(x:number,z:number){const forward=new Vector3(camera.target.x-camera.position.x,0,camera.target.z-camera.position.z).normalize();return {x:forward.x*z+forward.z*x,z:forward.z*z-forward.x*x};},
     dispose(){if(disposed)return;disposed=true;window.removeEventListener("resize",resize);canvas.removeEventListener("pointerdown",pointerDown);canvas.removeEventListener("pointerup",pointerUp);scene.dispose();engine.dispose();}
   };
