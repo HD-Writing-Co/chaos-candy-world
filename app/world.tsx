@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {ArrowRight,ChevronDown,Home,MessageCircle,Users,Hammer,Music2,LogOut,Sparkles,X,RotateCw,Move,RefreshCw} from "lucide-react";
 import {COLORS,ITEMS,type Player,type Plot,type Item,type Message} from "./types";
+import {createClubMusic,type ClubMusic} from "./music";
 import type {WorldScene} from "./scene";
 
 type Frame={type:string;me:Player;players:Player[];plots:Plot[];objects:Item[];messages:Message[];message:Message};
@@ -13,6 +14,8 @@ export default function World({websocket}:{websocket:string}){
   const [cell,setCell]=useState<{plot:number;x:number;z:number;item?:string}|null>(null),[build,setBuild]=useState(false),[plotName,setPlotName]=useState(""),[retry,setRetry]=useState(0),[ready,setReady]=useState(false),[saveStatus,setSaveStatus]=useState("");
   const canvas=useRef<HTMLCanvasElement>(null),scene=useRef<WorldScene|null>(null),socket=useRef<WebSocket|null>(null),keys=useRef(new Set<string>()),stick=useRef({x:0,z:0}),end=useRef<HTMLDivElement>(null);
   const authenticated=useRef(false);
+  const music=useRef<ClubMusic|null>(null);
+  const [musicOn,setMusicOn]=useState(false),[volume,setVolume]=useState(.35),[gridX,setGridX]=useState(0),[gridZ,setGridZ]=useState(0);
   const playersRef=useRef<Player[]>([]),worldRef=useRef({plots:[] as Plot[],objects:[] as Item[]}),myId=useRef("");
   const connected=status==="Connected", mine=plots.find(p=>p.owner===me?.id), plot=plots.find(p=>p.id===selectedPlot);
   const send=(value:object)=>{if(socket.current?.readyState===WebSocket.OPEN&&connected){socket.current.send(JSON.stringify(value));return true;}setError("Reconnect before making changes.");return false;};
@@ -27,7 +30,7 @@ export default function World({websocket}:{websocket:string}){
     let active=true;
     import("./scene").then(async({createWorld})=>{
       if(!active||!canvas.current)return;
-      const value=await createWorld(canvas.current,(plot,x,z,item)=>setCell({plot,x,z,item}));
+      const value=await createWorld(canvas.current,(plot,x,z,item)=>{setSelectedPlot(plot);setCell({plot,x,z,item});setGridX(x);setGridZ(z);});
       if(!active){value.dispose();return;}
       scene.current=value;value.world(worldRef.current.plots,worldRef.current.objects);value.players(playersRef.current,myId.current);setReady(true);
     }).catch(error=>{console.error("World graphics initialization failed",error);setError("Your browser could not start 3D graphics. Try updating the browser or enabling hardware acceleration.");});
@@ -58,7 +61,7 @@ export default function World({websocket}:{websocket:string}){
           if(message.type==="players"){playersRef.current=message.players;setPlayers(message.players);scene.current?.players(message.players,myId.current);}
           if(message.type==="chat")setMessages(list=>[...list,message.message].slice(-60));
           if(message.type==="error"){setError(String(message.message));setSaveStatus("");}
-          if(message.type==="saved"){setSaveStatus("Saved");setCell(null);}
+          if(message.type==="saved"){setSaveStatus("Saved");}
         };
         ws.onclose=event=>{authenticated.current=false;if(active){setStatus("Disconnected");setError(event.reason||"Connection interrupted. Reconnect to return to the club.");}};
         ws.onerror=()=>{if(active)setError("Couldn’t reach the multiplayer server. Check its domain and try again.");};
@@ -84,7 +87,12 @@ export default function World({websocket}:{websocket:string}){
   },[]);
   useEffect(()=>{end.current?.scrollIntoView({block:"nearest"});},[messages,expanded,panel]);
   useEffect(()=>{scene.current?.mode(build);},[build,ready]);
-  function editPlot(id:number){setSelectedPlot(id);setCell(null);setBuild(true);setPanel("plots");setExpanded(true);scene.current?.plot(id);setPlotName(plots.find(p=>p.id===id)?.name??"");}
+  function selectSquare(x:number,z:number){if(!mine||!Number.isInteger(x)||!Number.isInteger(z)||x< -16||x>15||z< -16||z>15)return;const item=items.find(i=>i.plot===mine.id&&i.x===x&&i.z===z);setCell({plot:mine.id,x,z,item:item?.id});scene.current?.select(mine.id,x,z);}
+  useEffect(()=>{if(cell){const item=items.find(i=>i.plot===cell.plot&&i.x===cell.x&&i.z===cell.z);if(item?.id!==cell.item)setCell({...cell,item:item?.id});}},[items,cell]);
+  useEffect(()=>{const self=players.find(p=>p.id===me?.id);if(connected&&self)music.current?.position(self.x,self.z,volume);else music.current?.position(999,999,0);},[players,me?.id,volume,connected]);
+  useEffect(()=>()=>{music.current?.stop();},[]);
+  async function toggleMusic(){if(music.current){music.current.stop();music.current=null;setMusicOn(false);return;}try{const sound=createClubMusic();music.current=sound;await sound.resume();setMusicOn(true);}catch{music.current?.stop();music.current=null;setError("Audio could not start. Tap Music again to retry.");}}
+  function editPlot(id:number){setSelectedPlot(id);setCell(null);setBuild(true);scene.current?.mode(true);setPanel("plots");setExpanded(true);scene.current?.plot(id);setPlotName(plots.find(p=>p.id===id)?.name??"");}
   function home(){setBuild(false);scene.current?.follow();if(connected)send({type:"home"});}
   function chat(event:FormEvent){event.preventDefault();if(!draft.trim())return;if(send({type:"chat",body:draft})){setDraft("");setError("");}}
   const onStick=(event:React.PointerEvent<HTMLDivElement>)=>{
@@ -96,7 +104,7 @@ export default function World({websocket}:{websocket:string}){
   return <main className="world-app">
     <canvas ref={canvas} aria-label="3D club and neighborhood. Use WASD or arrow keys to move. Drag to rotate the camera." tabIndex={0}/>
     <header className="topbar"><a className="brand" href="/"><span>✦</span><div>CHAOS <b>&</b> CANDY<small>THE NEIGHBORHOOD</small></div></a><div className="connection"><i className={connected?"live":""}/>{me?status:"Explore the club"}<span>· {players.length}/24 online</span></div><div className="account">{me?<><span className="profile-pic">{me.avatar?<img src={me.avatar} alt=""/>:"✦"}</span><strong>{me.name}</strong><button title="Sign out" aria-label="Sign out" onClick={async()=>{socket.current?.close();const response=await fetch("/api/logout",{method:"POST"});if(response.ok)location.reload();else setError("Sign-out failed. Try again.");}}><LogOut size={17}/></button></>:<a className="primary" href="/api/auth/login">Discord login <ArrowRight size={16}/></a>}</div></header>
-    <div className="location"><span className="live-dot"/> {build?"THE NEIGHBORHOOD":"CANDY SHOP"}<h1>{build?"Make yourself at home.":"Your people. Your place."}</h1><p>{build?"Choose a plot, then tap a square to build.":"A little chaos. A lot of good company."}</p></div>
+    <div className={"location "+(me?"compact":"")}><span className="live-dot"/> {build?"THE NEIGHBORHOOD":"CANDY SHOP"}<h1>{build?"Make yourself at home.":"Your people. Your place."}</h1><p>{build?"Choose a plot, then tap a square to build.":"A little chaos. A lot of good company."}</p></div>
     {error&&<div className="notice" role="alert">{error}<button aria-label="Dismiss message" onClick={()=>setError("")}><X size={16}/></button></div>}
     {checked&&!me&&<section className="welcome"><span className="eyebrow">WELCOME TO YOUR NEXT HANGOUT</span><h2>The night starts here.</h2><p>Meet your Discord friends in the club. Dance, chat, and build a corner of the neighborhood together.</p><a className="primary" href="/api/auth/login">Enter with Discord <ArrowRight size={18}/></a><small>Your server nickname comes with you.</small></section>}
     {me&&<aside className={"panel "+(expanded?"expanded":"")}>
@@ -104,21 +112,22 @@ export default function World({websocket}:{websocket:string}){
       {expanded&&panel==="chat"&&<><div className="chat-log" aria-label="Chat messages">{!messages.length&&<p className="empty">You’re here. Say hello.</p>}{messages.map(m=><article key={m.id}><strong>{m.name}</strong><time>{new Date(m.created).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</time><p>{m.body}</p></article>)}<div ref={end}/></div><form onSubmit={chat} className="chat-input"><input maxLength={300} aria-label="Chat message" placeholder="Say something nice…" value={draft} onChange={e=>setDraft(e.target.value)} disabled={!connected}/><button aria-label="Send message" disabled={!connected||!draft.trim()}><ArrowRight size={19}/></button></form></>}
       {expanded&&panel==="people"&&<div className="panel-body"><h2>In the neighborhood</h2>{players.map(p=><div className="person" key={p.id}><span style={{background:p.color}}>✦</span><div><strong>{p.name}</strong><small>{p.id===me.id?"You":p.emote||"Hanging out"}</small></div>{me.admin&&p.id!==me.id&&<button className="text-button" onClick={()=>{if(window.confirm("Remove "+p.name+" from this world?"))send({type:"ban",user:p.id});}}>Remove</button>}</div>)}<h3>Avatar color</h3><div className="swatches">{COLORS.map(c=><button key={c} aria-label={"Choose "+c} aria-pressed={color===c} style={{background:c}} onClick={()=>{if(send({type:"color",color:c}))setColor(c);}}/>)}</div></div>}
       {expanded&&panel==="plots"&&<div className="panel-body">
-        <h2>{mine?"Your place awaits.":"Find your little corner."}</h2><p className="muted">Test neighborhood · one free plot per member.</p>
+        <h2>{mine?"Your place awaits.":"Find your little corner."}</h2><p className="muted">32 × 32 m plots · 1 m grid · one free test plot.</p>
         <label>Visit a plot<select value={selectedPlot} onChange={e=>editPlot(Number(e.target.value))}>{plots.map(p=><option key={p.id} value={p.id}>Plot {p.id} · {p.owner?p.owner_name:"Available"}</option>)}</select></label>
-        <button className="secondary wide" onClick={()=>editPlot(selectedPlot)}><Move size={16}/> View plot {selectedPlot}</button>
+        <button className="secondary wide" onClick={()=>editPlot(selectedPlot)}><Move size={16}/> View plot {selectedPlot}</button><button className="secondary wide" disabled={!connected} onClick={()=>{if(send({type:"visit",plot:selectedPlot})){setBuild(false);scene.current?.follow();}}}>Walk around this plot</button>
         {plot&&!plot.owner&&!mine&&<button className="primary wide" disabled={!connected} onClick={()=>send({type:"claim",plot:selectedPlot})}>Claim this test plot</button>}
         {plot?.owner&&<p className="plot-title">{plot.name}<small>Owned by {plot.owner_name}</small></p>}
         {mine&&mine.id!==selectedPlot&&<button className="secondary wide" onClick={()=>editPlot(mine.id)}>Go to my plot</button>}
         {mine?.id===selectedPlot&&<><form onSubmit={e=>{e.preventDefault();send({type:"rename",name:plotName});}} className="rename"><input aria-label="Plot name" placeholder={mine.name} maxLength={40} value={plotName} onChange={e=>setPlotName(e.target.value)}/><button className="secondary" disabled={!plotName.trim()}>Save</button></form>
-          <h3>Build catalog <small>{items.filter(i=>i.plot===mine.id).length}/60</small></h3><div className="catalog">{ITEMS.map(([id,name])=><button aria-pressed={kind===id} key={id} onClick={()=>{setKind(id);setBuild(true);scene.current?.plot(mine.id);}}>{name}</button>)}</div>
-          <div className="build-row"><button className="secondary" onClick={()=>setRotation((rotation+90)%360)}><RotateCw size={16}/> {rotation}°</button><span>{cell?.plot===mine.id?"Square "+cell.x+", "+cell.z:"Tap a plot square"}</span></div>
-          <button className="primary wide" disabled={!connected||cell?.plot!==mine.id||!!cell?.item} onClick={()=>{if(cell&&send({type:"place",...cell,kind,rotation}))setSaveStatus("Saving…");}}>Place {ITEMS.find(i=>i[0]===kind)?.[1]}</button>
+          <h3>Build catalog <small>{items.filter(i=>i.plot===mine.id).length}/256</small></h3><div className="catalog">{ITEMS.map(([id,name])=><button aria-pressed={kind===id} key={id} onClick={()=>{setKind(id);setBuild(true);scene.current?.plot(mine.id);}}>{name}</button>)}</div>
+          <p className="muted">Choose an item, then tap a grid square. Or choose coordinates below (−16 to 15).</p><div className="coordinates"><label>X<input type="number" min={-16} max={15} value={gridX} onChange={e=>setGridX(Number(e.target.value))}/></label><label>Z<input type="number" min={-16} max={15} value={gridZ} onChange={e=>setGridZ(Number(e.target.value))}/></label><button className="secondary" onClick={()=>{setBuild(true);scene.current?.mode(true);scene.current?.plot(mine.id);selectSquare(gridX,gridZ);}}>Select square</button></div><div className="build-row"><button className="secondary" onClick={()=>setRotation((rotation+90)%360)}><RotateCw size={16}/> {rotation}°</button><span>{cell?.plot===mine.id?"Square "+cell.x+", "+cell.z:"Tap a plot square"}</span></div>
+          <button className="primary wide" disabled={!connected||cell?.plot!==mine.id||!!cell?.item} onClick={()=>{if(cell&&send({type:"place",...cell,kind,rotation})){setError("");setSaveStatus("Saving…");}}}>Place {ITEMS.find(i=>i[0]===kind)?.[1]}</button>
           {cell?.item&&cell.plot===mine.id&&<button className="text-button wide" onClick={()=>{send({type:"remove",id:cell.item});setSaveStatus("Saving…");}}>Remove selected object</button>}
           <span role="status" className="save-status">{saveStatus}</span>
         </>}
       </div>}
     </aside>}
+    {me&&<div className="audio-controls"><button aria-pressed={musicOn} onClick={toggleMusic}>{musicOn?"Mute music":"Enable music"}</button>{musicOn&&<label>Volume<input aria-label="Music volume" type="range" min="0" max="1" step=".05" value={volume} onChange={e=>setVolume(Number(e.target.value))}/></label>}<small>Club audio · fades out at 28 m</small></div>}
     <footer className="toolbar"><button onClick={home}><Home size={18}/><span>Club</span></button>{me&&<><button onClick={()=>editPlot(mine?.id??selectedPlot)}><Hammer size={18}/><span>Build</span></button><button onClick={()=>send({type:"emote",emote:"dance"})}><Music2 size={18}/><span>Dance</span></button><button onClick={()=>send({type:"emote",emote:"wave"})}><Sparkles size={18}/><span>Wave</span></button><button onClick={()=>send({type:"emote",emote:"sit"})}><span>↓</span><span>Sit</span></button></>}{me&&!connected&&<button onClick={()=>setRetry(x=>x+1)}><RefreshCw size={18}/><span>Reconnect</span></button>}</footer>
     {me&&<div className="joystick" aria-label="Touch movement control" onPointerDown={onStick} onPointerMove={onStick} onPointerUp={()=>stick.current={x:0,z:0}} onPointerCancel={()=>stick.current={x:0,z:0}} onLostPointerCapture={()=>stick.current={x:0,z:0}}><span>✥</span></div>}
     <div className="controls-hint">WASD / arrows to move <span>·</span> Drag to look <span>·</span> Scroll to zoom</div>

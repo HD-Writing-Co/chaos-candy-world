@@ -1,3 +1,4 @@
+import "@babylonjs/core/Culling/ray";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
@@ -16,9 +17,9 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
   engine.setHardwareScalingLevel(Math.max(1,window.devicePixelRatio/1.4));
   const scene=new Scene(engine);
   scene.clearColor=new Color4(.035,.023,.065,1);
-  scene.fogMode=Scene.FOGMODE_EXP2;scene.fogDensity=.009;scene.fogColor=new Color3(.035,.023,.065);
+  scene.fogMode=Scene.FOGMODE_EXP2;scene.fogDensity=.004;scene.fogColor=new Color3(.035,.023,.065);
   const camera=new ArcRotateCamera("camera",Math.PI/2,1.04,21,new Vector3(0,0,0),scene);
-  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.4;camera.lowerRadiusLimit=8;camera.upperRadiusLimit=42;
+  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.4;camera.lowerRadiusLimit=8;camera.upperRadiusLimit=100;
   camera.attachControl(canvas,true);camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");camera.panningSensibility=0;camera.wheelPrecision=30;
   const light=new HemisphericLight("sky",new Vector3(.3,1,.4),scene);light.intensity=.85;
   const materials=new Map<string,StandardMaterial>();
@@ -41,10 +42,10 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     const mesh=MeshBuilder.CreatePlane("label",{width,height},scene);mesh.material=mat;mesh.isPickable=false;
     return {mesh,dispose:()=>{mesh.dispose();mat.dispose();texture.dispose();}};
   }
-  box("ground",0,-.25,0,72,.4,70,"#171326");
-  box("main path",0,-.01,0,64,.12,8,"#322642");
-  box("cross path",0,.02,-1,5,.12,58,"#322642");
-  for(let x=-30;x<=30;x+=4){box("path light",x,.08,4,1,.08,.12,"#67e5d1",undefined,true);box("path light",x,.08,-4,1,.08,.12,"#d07aff",undefined,true);}
+  box("ground",0,-.25,0,200,.4,200,"#171326");
+  box("main path",0,-.01,0,180,.12,8,"#322642");
+  box("cross path",0,.02,-1,6,.12,180,"#322642");
+  for(let x=-88;x<=88;x+=8){box("path light",x,.08,4,1,.08,.12,"#67e5d1",undefined,true);box("path light",x,.08,-4,1,.08,.12,"#d07aff",undefined,true);}
   // The roofless club keeps the camera and touch navigation unobstructed.
   box("club",0,.08,-10,24,.22,15,"#251c36");
   box("back wall",0,2,-17.5,24,4,.4,"#1c142b");
@@ -58,13 +59,14 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     box("sofa base",x,.65,-9,2.8,.7,4,"#70375f");box("sofa back",x+(x<0?-.9:.9),1.3,-9,.7,1.2,4,"#a6588d");
     box("table",x,.7,-4.8,2,.2,1.6,"#43a89d");box("table leg",x,.3,-4.8,.3,.7,.3,"#333044");
   }
+  for(const z of [-48,48])box("neighborhood road",0,.02,z,180,.1,6,"#322642");
   const plots=new Map<number,{mesh:Mesh;label:ReturnType<typeof label>}>();
   for(let id=1;id<=8;id++){
     const {x,z}=plotPosition(id);
-    const mesh=box("plot",x,.04,z,10,.2,10,"#233b3d");mesh.isPickable=true;mesh.metadata={plot:id};
-    for(const dx of [-5,5])box("border",x+dx,.19,z,.08,.08,10,"#67e5d1",undefined,true);
-    for(const dz of [-5,5])box("border",x,.19,z+dz,10,.08,.08,"#67e5d1",undefined,true);
-    const title=label("Plot "+id+" · available",7,1.2,"#8ae4d5");title.mesh.position.set(x,1,z+(z>0?-5.3:5.3));title.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
+    const mesh=box("plot",x,.04,z,32,.2,32,"#233b3d");mesh.isPickable=true;mesh.metadata={plot:id};
+    for(const dx of [-16,16])box("border",x+dx,.19,z,.08,.08,32,"#67e5d1",undefined,true);
+    for(const dz of [-16,16])box("border",x,.19,z+dz,32,.08,.08,"#67e5d1",undefined,true);
+    const title=label("Plot "+id+" · available",7,1.2,"#8ae4d5");title.mesh.position.set(x,1,z+(z>0?-17:17));title.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;
     plots.set(id,{mesh,label:title});
   }
   const avatarMap=new Map<string,{root:TransformNode;body:Mesh;name:ReturnType<typeof label>;target:Player}>();
@@ -81,7 +83,7 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
   const objects=new Map<string,TransformNode>();
   function build(item:Item){
     const root=new TransformNode(item.id,scene),p=plotPosition(item.plot);
-    root.position.set(p.x+item.x,.2,p.z+item.z);root.rotation.y=item.rotation*Math.PI/180;
+    root.position.set(p.x+item.x+.5,.2,p.z+item.z+.5);root.rotation.y=item.rotation*Math.PI/180;
     const part=(x:number,y:number,z:number,w:number,h:number,d:number,c:string,g=false)=>box("part",x,y,z,w,h,d,c,root,g);
     if(item.kind==="wall")part(0,1.3,0,.95,2.6,.22,"#79618c");
     if(item.kind==="floor")part(0,.05,0,.95,.1,.95,"#b68ad7");
@@ -93,16 +95,20 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     for(const mesh of root.getChildMeshes()){mesh.isPickable=true;mesh.metadata={plot:item.plot,item:item.id};}
     return root;
   }
+  const grid=new TransformNode("build grid",scene);
+  for(let n=-16;n<=16;n++){box("grid",n,.17,0,.025,.025,32,"#47706e",grid);box("grid",0,.17,n,32,.025,.025,"#47706e",grid);}
+  grid.setEnabled(false);
   const highlight=box("selection",0,.25,0,1,.08,1,"#fbe49b",undefined,true);highlight.setEnabled(false);
   let self="", follow=true, buildMode=false;
   const pick=(event:PointerEvent)=>{
     if(!buildMode)return;
-    const result=scene.pick(event.offsetX,event.offsetY);
+    const rect=canvas.getBoundingClientRect();
+    const result=scene.pick(event.clientX-rect.left,event.clientY-rect.top);
     const meta=result?.pickedMesh?.metadata;
     if(!result?.pickedPoint||!meta?.plot)return;
-    const p=plotPosition(meta.plot),x=Math.round(result.pickedPoint.x-p.x),z=Math.round(result.pickedPoint.z-p.z);
-    if(Math.abs(x)>4||Math.abs(z)>4)return;
-    highlight.position.set(p.x+x,.3,p.z+z);highlight.setEnabled(true);onPick(meta.plot,x,z,meta.item);
+    const p=plotPosition(meta.plot),x=Math.floor(result.pickedPoint.x-p.x),z=Math.floor(result.pickedPoint.z-p.z);
+    if(x< -16||x>15||z< -16||z>15)return;
+    highlight.position.set(p.x+x+.5,.3,p.z+z+.5);highlight.setEnabled(true);onPick(meta.plot,x,z,meta.item);
   };
   // A short click selects a building cell; dragging rotates the view.
   let down={x:0,y:0};
@@ -128,12 +134,13 @@ export async function createWorld(canvas:HTMLCanvasElement,onPick:(plot:number,x
     players(list:Player[],id:string){self=id;const ids=new Set(list.map(p=>p.id));for(const [id,a] of avatarMap)if(!ids.has(id)){a.name.dispose();a.root.dispose();avatarMap.delete(id);}
       for(const p of list){let a=avatarMap.get(p.id);if(!a){a=playerMesh(p);avatarMap.set(p.id,a);}a.target=p;a.body.material=material(p.color);}},
     world(list:Plot[],items:Item[]){
-      for(const plot of list){const entry=plots.get(plot.id)!;entry.label.dispose();entry.label=label(plot.owner?plot.name:"Plot "+plot.id+" · available",7,1.2,plot.owner?"#e6b5ff":"#8ae4d5");const p=plotPosition(plot.id);entry.label.mesh.position.set(p.x,1,p.z+(p.z>0?-5.3:5.3));entry.label.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;}
+      for(const plot of list){const entry=plots.get(plot.id)!;entry.label.dispose();entry.label=label(plot.owner?plot.name:"Plot "+plot.id+" · available",7,1.2,plot.owner?"#e6b5ff":"#8ae4d5");const p=plotPosition(plot.id);entry.label.mesh.position.set(p.x,1,p.z+(p.z>0?-17:17));entry.label.mesh.billboardMode=Mesh.BILLBOARDMODE_ALL;}
       const ids=new Set(items.map(i=>i.id));for(const [id,node] of objects)if(!ids.has(id)){node.dispose();objects.delete(id);}
       for(const item of items)if(!objects.has(item.id))objects.set(item.id,build(item));
     },
-    mode(enabled:boolean){buildMode=enabled;if(!enabled)highlight.setEnabled(false);},
-    plot(id:number){follow=false;const p=plotPosition(id);camera.target.set(p.x,0,p.z);camera.radius=16;camera.beta=.6;},
+    select(plot:number,x:number,z:number){const p=plotPosition(plot);highlight.position.set(p.x+x+.5,.3,p.z+z+.5);highlight.setEnabled(true);},
+    mode(enabled:boolean){buildMode=enabled;grid.setEnabled(enabled);if(!enabled)highlight.setEnabled(false);},
+    plot(id:number){follow=false;const p=plotPosition(id);grid.position.set(p.x,0,p.z);camera.target.set(p.x,0,p.z);camera.radius=52;camera.beta=.45;},
     follow(){follow=true;camera.radius=21;camera.beta=1.04;},
     direction(x:number,z:number){const forward=new Vector3(camera.target.x-camera.position.x,0,camera.target.z-camera.position.z).normalize();return {x:forward.x*z+forward.z*x,z:forward.z*z-forward.x*x};},
     dispose(){if(disposed)return;disposed=true;window.removeEventListener("resize",resize);canvas.removeEventListener("pointerdown",pointerDown);canvas.removeEventListener("pointerup",pointerUp);scene.dispose();engine.dispose();}

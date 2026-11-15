@@ -4,4 +4,4 @@ export type Item={id:string;plot:number;kind:string;x:number;z:number;rotation:n
 export type Message={id:string;name:string;body:string;created:number};
 export const COLORS=["#cf7aff","#ff75b9","#5ce4d0","#f9c46a","#7ba7ff"];
 export const ITEMS=[["wall","Wall"],["floor","Floor tile"],["chair","Chair"],["table","Table"],["lamp","Neon lamp"],["tree","Tree"],["booth","Market stall"]];
-export const plotPosition=(id:number)=>({x:((id-1)%4)*14-21,z:id<=4?22:-24});
+export const plotPosition=(id:number)=>({x:((id-1)%4)*44-66,z:id<=4?70:-70});
