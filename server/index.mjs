@@ -149,6 +149,7 @@ export async function start(config=process.env){
         if(!player||player.ws!==ws)return;
         if(msg.type==='move'){player.input={x:msg.x,z:msg.z};player.lastInput=Date.now();return;}
         if(msg.type==='emote'&&['','dance','wave','sit'].includes(msg.emote)){player.emote=msg.emote;return;}
+        if(msg.type==='visit'){const plot=PLOTS.find(p=>p.id===msg.plot);if(plot){player.x=plot.x;player.z=plot.z+(plot.z>0?-18:18);player.input={x:0,z:0};}return;}
         if(msg.type==='home'){Object.assign(player,SPAWN);player.input={x:0,z:0};return;}
         if(msg.type==='chat'){
           if(limited('chat:'+player.id,20))throw new Error('Please slow down.');
@@ -170,8 +171,8 @@ export async function start(config=process.env){
             if(!result.rowsAffected)throw new Error('That plot is claimed, or you already own a plot.');
           }else if(msg.type==='place'){
             if(!placement(msg))throw new Error('Choose an item and a valid grid square.');
-            const result=await sql("INSERT INTO world_objects SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM world_plots WHERE id=? AND owner=?) AND (SELECT COUNT(*) FROM world_objects WHERE plot=?)<60 ON CONFLICT(plot,x,z) DO NOTHING",[randomUUID(),msg.plot,msg.kind,msg.x,msg.z,msg.rotation,msg.plot,player.id,msg.plot]);
-            if(!result.rowsAffected)throw new Error('Build on your own plot in an empty square. Limit 60 items.');
+            const result=await sql("INSERT INTO world_objects SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM world_plots WHERE id=? AND owner=?) AND (SELECT COUNT(*) FROM world_objects WHERE plot=?)<256 ON CONFLICT(plot,x,z) DO NOTHING",[randomUUID(),msg.plot,msg.kind,msg.x,msg.z,msg.rotation,msg.plot,player.id,msg.plot]);
+            if(!result.rowsAffected)throw new Error('Build on your own plot in an empty square. Limit 256 items.');
           }else if(msg.type==='remove'){
             if(typeof msg.id!=='string')return;
             const result=await sql("DELETE FROM world_objects WHERE id=? AND EXISTS (SELECT 1 FROM world_plots WHERE id=world_objects.plot AND owner=?)",[msg.id,player.id]);

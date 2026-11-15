@@ -12,7 +12,7 @@ test('movement is bounded and diagonal speed is normalized; placement is restric
   const p={x:0,z:0};move(p,{x:100,z:100},1);assert.ok(Math.abs(Math.hypot(p.x,p.z)-4.5)<.001);
   move(p,{x:NaN,z:0},1);assert.ok(Number.isFinite(p.x));
   assert.equal(placement({plot:1,kind:'chair',x:0,z:0,rotation:90}),true);
-  for(const bad of [{plot:9},{x:5},{kind:'script'},{rotation:23}])assert.equal(placement({plot:1,kind:'chair',x:0,z:0,rotation:90,...bad}),false);
+  for(const bad of [{plot:9},{x:16},{kind:'script'},{rotation:23}])assert.equal(placement({plot:1,kind:'chair',x:0,z:0,rotation:90,...bad}),false);
 });
 
 test('authenticated multiplayer, atomic ownership, persistence and moderation',async()=>{
@@ -48,10 +48,10 @@ test('authenticated multiplayer, atomic ownership, persistence and moderation',a
     assert.equal((await query('SELECT COUNT(*) AS n FROM world_plots WHERE owner IS NOT NULL')).rows[0].n,1);
     loser.queue.length=0;loser.send({type:'place',plot:1,kind:'chair',x:0,z:0,rotation:0});await loser.wait('error');
     assert.equal((await query('SELECT COUNT(*) AS n FROM world_objects')).rows[0].n,0);
-    winner.queue.length=0;winner.send({type:'place',plot:1,kind:'chair',x:0,z:0,rotation:0});await winner.wait('saved');
+    winner.queue.length=0;winner.send({type:'place',plot:1,kind:'chair',x:15,z:-16,rotation:0});await winner.wait('saved');
     assert.equal((await query('SELECT COUNT(*) AS n FROM world_objects')).rows[0].n,1);
     winner.send({type:'claim',plot:2});await winner.wait('error');
-    winner.send({type:'place',plot:1,kind:'tree',x:8,z:0,rotation:0});await winner.wait('error');
+    winner.send({type:'place',plot:1,kind:'tree',x:16,z:0,rotation:0});await winner.wait('error');
     loser.send({type:'remove',id:(await query('SELECT id FROM world_objects')).rows[0].id});await loser.wait('error');
     b.send({type:'ban',user:'owner'});await b.wait('error');
     a.send({type:'chat',body:'hello <script> literal text'});assert.equal((await b.wait('chat')).message.body,'hello <script> literal text');
