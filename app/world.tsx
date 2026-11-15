@@ -1,0 +1,126 @@
+"use client";
+import {useEffect,useRef,useState,type FormEvent} from "react";
+import {ArrowRight,ChevronDown,Home,MessageCircle,Users,Hammer,Music2,LogOut,Sparkles,X,RotateCw,Move,RefreshCw} from "lucide-react";
+import {COLORS,ITEMS,type Player,type Plot,type Item,type Message} from "./types";
+import type {WorldScene} from "./scene";
+
+type Frame={type:string;me:Player;players:Player[];plots:Plot[];objects:Item[];messages:Message[];message:Message};
+export default function World({websocket}:{websocket:string}){
+  const [me,setMe]=useState<Player|null>(null),[checked,setChecked]=useState(false),[status,setStatus]=useState("Loading");
+  const [players,setPlayers]=useState<Player[]>([]),[plots,setPlots]=useState<Plot[]>([]),[items,setItems]=useState<Item[]>([]),[messages,setMessages]=useState<Message[]>([]);
+  const [panel,setPanel]=useState<"chat"|"plots"|"people">("chat"),[expanded,setExpanded]=useState(true),[error,setError]=useState(""),[draft,setDraft]=useState("");
+  const [color,setColor]=useState(COLORS[0]),[selectedPlot,setSelectedPlot]=useState(1),[kind,setKind]=useState("chair"),[rotation,setRotation]=useState(0);
+  const [cell,setCell]=useState<{plot:number;x:number;z:number;item?:string}|null>(null),[build,setBuild]=useState(false),[plotName,setPlotName]=useState(""),[retry,setRetry]=useState(0),[ready,setReady]=useState(false),[saveStatus,setSaveStatus]=useState("");
+  const canvas=useRef<HTMLCanvasElement>(null),scene=useRef<WorldScene|null>(null),socket=useRef<WebSocket|null>(null),keys=useRef(new Set<string>()),stick=useRef({x:0,z:0}),end=useRef<HTMLDivElement>(null);
+  const authenticated=useRef(false);
+  const playersRef=useRef<Player[]>([]),worldRef=useRef({plots:[] as Plot[],objects:[] as Item[]}),myId=useRef("");
+  const connected=status==="Connected", mine=plots.find(p=>p.owner===me?.id), plot=plots.find(p=>p.id===selectedPlot);
+  const send=(value:object)=>{if(socket.current?.readyState===WebSocket.OPEN&&connected){socket.current.send(JSON.stringify(value));return true;}setError("Reconnect before making changes.");return false;};
+  useEffect(()=>{
+    let active=true;
+    const errors:Record<string,string>={membership:"Join the Discord server before entering this world.",setup:"Discord login needs configuration. Follow START-HERE.md.",login:"Discord sign-in did not finish. Please try again.",banned:"Your access to this world has been removed."};
+    const code=new URLSearchParams(location.search).get("error");if(code)setError(errors[code]??"Sign-in failed.");
+    fetch("/api/me").then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error);if(active){setMe(data.user);if(data.user)setColor(data.user.color);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setChecked(true);});
+    return ()=>{active=false;};
+  },[]);
+  useEffect(()=>{
+    let active=true;
+    import("./scene").then(async({createWorld})=>{
+      if(!active||!canvas.current)return;
+      const value=await createWorld(canvas.current,(plot,x,z,item)=>setCell({plot,x,z,item}));
+      if(!active){value.dispose();return;}
+      scene.current=value;value.world(worldRef.current.plots,worldRef.current.objects);value.players(playersRef.current,myId.current);setReady(true);
+    }).catch(error=>{console.error("World graphics initialization failed",error);setError("Your browser could not start 3D graphics. Try updating the browser or enabling hardware acceleration.");});
+    return ()=>{active=false;scene.current?.dispose();scene.current=null;};
+  },[]);
+  useEffect(()=>{
+    if(!me||!ready)return;
+    let active=true;
+    authenticated.current=false;setStatus("Connecting");setError("");
+    async function connect(){
+      try{
+        if(!/^wss?:\/\//.test(websocket))throw new Error("Set NEXT_PUBLIC_WORLD_WS_URL in Vercel and redeploy.");
+        const response=await fetch("/api/ticket",{method:"POST"}),result=await response.json();
+        if(!response.ok)throw new Error(result.error);
+        if(!active)return;
+        const ws=new WebSocket(websocket.replace(/\/$/,"")+"/live");socket.current=ws;
+        ws.onopen=()=>ws.send(JSON.stringify({type:"auth",ticket:result.ticket}));
+        ws.onmessage=event=>{
+          if(!active)return;
+          const message=JSON.parse(event.data) as Frame;
+          if(message.type==="welcome"){
+            authenticated.current=true;setStatus("Connected");myId.current=message.me.id;setMe(message.me);setMessages(message.messages);
+          }
+          if(message.type==="welcome"||message.type==="world"){
+            worldRef.current={plots:message.plots,objects:message.objects};setPlots(message.plots);setItems(message.objects);
+            scene.current?.world(message.plots,message.objects);
+          }
+          if(message.type==="players"){playersRef.current=message.players;setPlayers(message.players);scene.current?.players(message.players,myId.current);}
+          if(message.type==="chat")setMessages(list=>[...list,message.message].slice(-60));
+          if(message.type==="error"){setError(String(message.message));setSaveStatus("");}
+          if(message.type==="saved"){setSaveStatus("Saved");setCell(null);}
+        };
+        ws.onclose=event=>{authenticated.current=false;if(active){setStatus("Disconnected");setError(event.reason||"Connection interrupted. Reconnect to return to the club.");}};
+        ws.onerror=()=>{if(active)setError("Couldn’t reach the multiplayer server. Check its domain and try again.");};
+      }catch(e){if(active){setStatus("Disconnected");setError(e instanceof Error?e.message:"Connection failed.");}}
+    }
+    void connect();
+    return ()=>{active=false;authenticated.current=false;socket.current?.close();socket.current=null;};
+  },[me?.id,ready,retry,websocket]);
+  useEffect(()=>{
+    const down=(event:KeyboardEvent)=>{if((event.target as HTMLElement)?.closest("input,textarea,select,button"))return;if(["w","a","s","d","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(event.key)){keys.current.add(event.key);event.preventDefault();}};
+    const up=(event:KeyboardEvent)=>keys.current.delete(event.key);
+    const clear=()=>{keys.current.clear();stick.current={x:0,z:0};};
+    window.addEventListener("keydown",down);window.addEventListener("keyup",up);window.addEventListener("blur",clear);document.addEventListener("visibilitychange",clear);
+    const timer=setInterval(()=>{
+      if(!authenticated.current||socket.current?.readyState!==WebSocket.OPEN)return;
+      const k=keys.current;
+      const x=Number(k.has("d")||k.has("ArrowRight"))-Number(k.has("a")||k.has("ArrowLeft"))+stick.current.x;
+      const z=Number(k.has("w")||k.has("ArrowUp"))-Number(k.has("s")||k.has("ArrowDown"))+stick.current.z;
+      const direction=scene.current?.direction(x,z)??{x,z};
+      socket.current.send(JSON.stringify({type:"move",...direction}));
+    },100);
+    return ()=>{clearInterval(timer);window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);window.removeEventListener("blur",clear);document.removeEventListener("visibilitychange",clear);};
+  },[]);
+  useEffect(()=>{end.current?.scrollIntoView({block:"nearest"});},[messages,expanded,panel]);
+  useEffect(()=>{scene.current?.mode(build);},[build,ready]);
+  function editPlot(id:number){setSelectedPlot(id);setCell(null);setBuild(true);setPanel("plots");setExpanded(true);scene.current?.plot(id);setPlotName(plots.find(p=>p.id===id)?.name??"");}
+  function home(){setBuild(false);scene.current?.follow();if(connected)send({type:"home"});}
+  function chat(event:FormEvent){event.preventDefault();if(!draft.trim())return;if(send({type:"chat",body:draft})){setDraft("");setError("");}}
+  const onStick=(event:React.PointerEvent<HTMLDivElement>)=>{
+    if(event.type==="pointerdown")event.currentTarget.setPointerCapture(event.pointerId);
+    if(!event.currentTarget.hasPointerCapture(event.pointerId))return;
+    const rect=event.currentTarget.getBoundingClientRect();
+    stick.current={x:Math.max(-1,Math.min(1,(event.clientX-rect.left-rect.width/2)/30)),z:Math.max(-1,Math.min(1,-(event.clientY-rect.top-rect.height/2)/30))};
+  };
+  return <main className="world-app">
+    <canvas ref={canvas} aria-label="3D club and neighborhood. Use WASD or arrow keys to move. Drag to rotate the camera." tabIndex={0}/>
+    <header className="topbar"><a className="brand" href="/"><span>✦</span><div>CHAOS <b>&</b> CANDY<small>THE NEIGHBORHOOD</small></div></a><div className="connection"><i className={connected?"live":""}/>{me?status:"Explore the club"}<span>· {players.length}/24 online</span></div><div className="account">{me?<><span className="profile-pic">{me.avatar?<img src={me.avatar} alt=""/>:"✦"}</span><strong>{me.name}</strong><button title="Sign out" aria-label="Sign out" onClick={async()=>{socket.current?.close();const response=await fetch("/api/logout",{method:"POST"});if(response.ok)location.reload();else setError("Sign-out failed. Try again.");}}><LogOut size={17}/></button></>:<a className="primary" href="/api/auth/login">Discord login <ArrowRight size={16}/></a>}</div></header>
+    <div className="location"><span className="live-dot"/> {build?"THE NEIGHBORHOOD":"CANDY SHOP"}<h1>{build?"Make yourself at home.":"Your people. Your place."}</h1><p>{build?"Choose a plot, then tap a square to build.":"A little chaos. A lot of good company."}</p></div>
+    {error&&<div className="notice" role="alert">{error}<button aria-label="Dismiss message" onClick={()=>setError("")}><X size={16}/></button></div>}
+    {checked&&!me&&<section className="welcome"><span className="eyebrow">WELCOME TO YOUR NEXT HANGOUT</span><h2>The night starts here.</h2><p>Meet your Discord friends in the club. Dance, chat, and build a corner of the neighborhood together.</p><a className="primary" href="/api/auth/login">Enter with Discord <ArrowRight size={18}/></a><small>Your server nickname comes with you.</small></section>}
+    {me&&<aside className={"panel "+(expanded?"expanded":"")}>
+      <div className="panel-tabs">{(["chat","plots","people"] as const).map((name,i)=><button key={name} aria-pressed={panel===name&&expanded} onClick={()=>{setPanel(name);setExpanded(true);}}>{i===0?<MessageCircle size={17}/>:i===1?<Hammer size={17}/>:<Users size={17}/>}<span>{name==="chat"?"Club chat":name==="plots"?"My space":"People"}</span></button>)}<button aria-label={expanded?"Collapse panel":"Expand panel"} onClick={()=>setExpanded(!expanded)}><ChevronDown size={18}/></button></div>
+      {expanded&&panel==="chat"&&<><div className="chat-log" aria-label="Chat messages">{!messages.length&&<p className="empty">You’re here. Say hello.</p>}{messages.map(m=><article key={m.id}><strong>{m.name}</strong><time>{new Date(m.created).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</time><p>{m.body}</p></article>)}<div ref={end}/></div><form onSubmit={chat} className="chat-input"><input maxLength={300} aria-label="Chat message" placeholder="Say something nice…" value={draft} onChange={e=>setDraft(e.target.value)} disabled={!connected}/><button aria-label="Send message" disabled={!connected||!draft.trim()}><ArrowRight size={19}/></button></form></>}
+      {expanded&&panel==="people"&&<div className="panel-body"><h2>In the neighborhood</h2>{players.map(p=><div className="person" key={p.id}><span style={{background:p.color}}>✦</span><div><strong>{p.name}</strong><small>{p.id===me.id?"You":p.emote||"Hanging out"}</small></div>{me.admin&&p.id!==me.id&&<button className="text-button" onClick={()=>{if(window.confirm("Remove "+p.name+" from this world?"))send({type:"ban",user:p.id});}}>Remove</button>}</div>)}<h3>Avatar color</h3><div className="swatches">{COLORS.map(c=><button key={c} aria-label={"Choose "+c} aria-pressed={color===c} style={{background:c}} onClick={()=>{if(send({type:"color",color:c}))setColor(c);}}/>)}</div></div>}
+      {expanded&&panel==="plots"&&<div className="panel-body">
+        <h2>{mine?"Your place awaits.":"Find your little corner."}</h2><p className="muted">Test neighborhood · one free plot per member.</p>
+        <label>Visit a plot<select value={selectedPlot} onChange={e=>editPlot(Number(e.target.value))}>{plots.map(p=><option key={p.id} value={p.id}>Plot {p.id} · {p.owner?p.owner_name:"Available"}</option>)}</select></label>
+        <button className="secondary wide" onClick={()=>editPlot(selectedPlot)}><Move size={16}/> View plot {selectedPlot}</button>
+        {plot&&!plot.owner&&!mine&&<button className="primary wide" disabled={!connected} onClick={()=>send({type:"claim",plot:selectedPlot})}>Claim this test plot</button>}
+        {plot?.owner&&<p className="plot-title">{plot.name}<small>Owned by {plot.owner_name}</small></p>}
+        {mine&&mine.id!==selectedPlot&&<button className="secondary wide" onClick={()=>editPlot(mine.id)}>Go to my plot</button>}
+        {mine?.id===selectedPlot&&<><form onSubmit={e=>{e.preventDefault();send({type:"rename",name:plotName});}} className="rename"><input aria-label="Plot name" placeholder={mine.name} maxLength={40} value={plotName} onChange={e=>setPlotName(e.target.value)}/><button className="secondary" disabled={!plotName.trim()}>Save</button></form>
+          <h3>Build catalog <small>{items.filter(i=>i.plot===mine.id).length}/60</small></h3><div className="catalog">{ITEMS.map(([id,name])=><button aria-pressed={kind===id} key={id} onClick={()=>{setKind(id);setBuild(true);scene.current?.plot(mine.id);}}>{name}</button>)}</div>
+          <div className="build-row"><button className="secondary" onClick={()=>setRotation((rotation+90)%360)}><RotateCw size={16}/> {rotation}°</button><span>{cell?.plot===mine.id?"Square "+cell.x+", "+cell.z:"Tap a plot square"}</span></div>
+          <button className="primary wide" disabled={!connected||cell?.plot!==mine.id||!!cell?.item} onClick={()=>{if(cell&&send({type:"place",...cell,kind,rotation}))setSaveStatus("Saving…");}}>Place {ITEMS.find(i=>i[0]===kind)?.[1]}</button>
+          {cell?.item&&cell.plot===mine.id&&<button className="text-button wide" onClick={()=>{send({type:"remove",id:cell.item});setSaveStatus("Saving…");}}>Remove selected object</button>}
+          <span role="status" className="save-status">{saveStatus}</span>
+        </>}
+      </div>}
+    </aside>}
+    <footer className="toolbar"><button onClick={home}><Home size={18}/><span>Club</span></button>{me&&<><button onClick={()=>editPlot(mine?.id??selectedPlot)}><Hammer size={18}/><span>Build</span></button><button onClick={()=>send({type:"emote",emote:"dance"})}><Music2 size={18}/><span>Dance</span></button><button onClick={()=>send({type:"emote",emote:"wave"})}><Sparkles size={18}/><span>Wave</span></button><button onClick={()=>send({type:"emote",emote:"sit"})}><span>↓</span><span>Sit</span></button></>}{me&&!connected&&<button onClick={()=>setRetry(x=>x+1)}><RefreshCw size={18}/><span>Reconnect</span></button>}</footer>
+    {me&&<div className="joystick" aria-label="Touch movement control" onPointerDown={onStick} onPointerMove={onStick} onPointerUp={()=>stick.current={x:0,z:0}} onPointerCancel={()=>stick.current={x:0,z:0}} onLostPointerCapture={()=>stick.current={x:0,z:0}}><span>✥</span></div>}
+    <div className="controls-hint">WASD / arrows to move <span>·</span> Drag to look <span>·</span> Scroll to zoom</div>
+  </main>;
+}
