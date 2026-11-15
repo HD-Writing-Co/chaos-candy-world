@@ -1,4 +1,6 @@
 import express from 'express';
+import {economy} from './economy.mjs';
+import {fishing} from './fishing.mjs';
 import {createServer} from 'node:http';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createClient} from '@libsql/client';
@@ -15,6 +17,7 @@ export async function start(config=process.env){
   await db.executeMultiple(readFileSync(new URL('./schema.sql',import.meta.url),'utf8'));
   await db.batch(PLOTS.map(p=>({sql:'INSERT INTO world_plots(id) VALUES (?) ON CONFLICT DO NOTHING',args:[p.id]})),'write');
   const sql=(query,args=[])=>db.execute({sql:query,args});
+  const bucks=economy(db),fish=fishing(db);
   const digest=value=>createHash('sha256').update(value).digest('hex');
   const token=()=>randomBytes(32).toString('base64url');
   const same=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -140,8 +143,12 @@ export async function start(config=process.env){
           if(ws.readyState!==WebSocket.OPEN)return;
           const prior=players.get(user.id);
           if(prior)prior.ws.close(4002,'Opened in another tab');
+          await enqueue(()=>bucks.init(user.id));
           ws.user=user;
           players.set(user.id,{ws,id:user.id,name:user.name,color:user.color,...SPAWN,rotation:0,emote:'',input:{x:0,z:0},lastInput:0,seen:Date.now()});
+          const wallet=await bucks.state(user.id);
+          send(ws,{type:'wallet',wallet});
+          send(ws,{type:'fishing',fishing:await fish.state(user.id)});
           send(ws,{type:'welcome',me:{...user,admin:user.id===ownerId},...world,messages:recent});
           return;
         }
@@ -149,6 +156,7 @@ export async function start(config=process.env){
         if(!player||player.ws!==ws)return;
         if(msg.type==='move'){player.input={x:msg.x,z:msg.z};player.lastInput=Date.now();return;}
         if(msg.type==='emote'&&['','dance','wave','sit'].includes(msg.emote)){player.emote=msg.emote;return;}
+        if(msg.type==='fishing_visit'){Object.assign(player,{x:30,z:24,input:{x:0,z:0},emote:''});return;}
         if(msg.type==='visit'){const plot=PLOTS.find(p=>p.id===msg.plot);if(plot){player.x=plot.x;player.z=plot.z+(plot.z>0?-18:18);player.input={x:0,z:0};}return;}
         if(msg.type==='home'){Object.assign(player,SPAWN);player.input={x:0,z:0};return;}
         if(msg.type==='chat'){
@@ -165,10 +173,22 @@ export async function start(config=process.env){
           if(msg.type==='color'&&COLORS.includes(msg.color)){
             await sql('UPDATE world_users SET color=? WHERE id=?',[msg.color,player.id]);player.color=msg.color;return;
           }
-          if(msg.type==='claim'){
+          if(['cast','reel','sell_fish'].includes(msg.type)){
+            const result=msg.type==='cast'?await fish.cast(player.id,player):msg.type==='reel'?await fish.reel(player.id,player):await fish.sell(player.id,player);
+            if(msg.type==='cast')player.emote='fishing';
+            if(msg.type==='reel')player.emote='';
+            send(ws,{type:'fishing',fishing:await fish.state(player.id),result});
+            if(msg.type==='sell_fish')send(ws,{type:'wallet',wallet:await bucks.state(player.id)});
+            return;
+          }
+          if(msg.type==='emote'&&msg.emote==='neon_spin'){
+            if(!(await fish.state(player.id)).dance)throw new Error('Catch the rare Neon Spin dance to unlock it.');
+            player.emote='neon_spin';return;
+          }
+          if(msg.type==='daily') {send(ws,{type:'wallet',wallet:await bucks.daily(player.id)});return;}
+          if(msg.type==='claim'||msg.type==='buy'){
             if(!Number.isInteger(msg.plot)||!PLOTS.some(p=>p.id===msg.plot))throw new Error('Select a plot.');
-            const result=await sql("UPDATE world_plots SET owner=?,name=? WHERE id=? AND owner IS NULL AND NOT EXISTS (SELECT 1 FROM world_plots WHERE owner=?)",[player.id,player.name+"'s plot",msg.plot,player.id]);
-            if(!result.rowsAffected)throw new Error('That plot is claimed, or you already own a plot.');
+            send(ws,{type:'wallet',wallet:await bucks.buy(player.id,player.name,msg.plot)});
           }else if(msg.type==='place'){
             if(!placement(msg))throw new Error('Choose an item and a valid grid square.');
             const result=await sql("INSERT INTO world_objects SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM world_plots WHERE id=? AND owner=?) AND (SELECT COUNT(*) FROM world_objects WHERE plot=?)<256 ON CONFLICT(plot,x,z) DO NOTHING",[randomUUID(),msg.plot,msg.kind,msg.x,msg.z,msg.rotation,msg.plot,player.id,msg.plot]);
@@ -195,7 +215,10 @@ export async function start(config=process.env){
   const snapshot=()=>[...players.values()].map(({ws,input,lastInput,seen,...p})=>p);
   const tick=setInterval(()=>{
     const now=Date.now();
-    for(const player of players.values())if(now-player.lastInput<500)move(player,player.input,.1);
+    for(const player of players.values()){
+      if(now-player.lastInput<500)move(player,player.input,.1);
+
+    }
     broadcast({type:'players',players:snapshot()});
   },100);
   const cleanup=setInterval(()=>{
@@ -207,7 +230,7 @@ export async function start(config=process.env){
   await readWorld();
   await new Promise(resolve=>server.listen(Number(config.PORT)||8080,'0.0.0.0',resolve));
   console.log('World server ready.');
-  return {server,db,close:async()=>{clearInterval(tick);clearInterval(cleanup);for(const ws of wss.clients)ws.terminate();await new Promise(resolve=>server.close(resolve));db.close();}};
+  return {server,db,close:async()=>{clearInterval(tick);clearInterval(cleanup);for(const ws of wss.clients)ws.terminate();await new Promise(resolve=>server.close(resolve));await mutation;db.close();}};
 }
 if(process.argv[1]&&new URL(import.meta.url).pathname===process.argv[1]){
   start().catch(error=>{console.error(error.message);process.exit(1);});
